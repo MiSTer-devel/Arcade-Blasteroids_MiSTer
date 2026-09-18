@@ -1,0 +1,164 @@
+# Synthesis source list for the Blasteroids core.  Game RTL is listed here and
+# only here - never add files from the Quartus GUI, and never put game logic in
+# sys/ (that directory is the untouched MiSTer framework).
+#
+# Copyright (C) 2026 RetroShrimp.  GPL-3.0-or-later; see LICENSE and NOTICE.md.
+# Derived from the Xybots MiSTer core's core/files.qip (GPL-3.0, same author).
+#
+# Two lines a future editor must not undo:
+#
+#   * the `SEARCH_PATH rtl/lib/fx68k` line.  fx68k.sv does
+#     $readmemb("microrom.mem") / ("nanorom.mem") with relative paths, and the
+#     vendored files are not edited.  If the microcode is not found the ROMs
+#     synthesise empty and the core boots to a black screen with no error that
+#     looks like the cause - check the build log for Info (10905) naming each
+#     .mem file, and for 1024x17 and 336x68 ROMs with those init files in the
+#     Fitter's RAM summary;
+#   * rtl/video/blstroid_testpat.sv, which is compiled only when
+#     BLSTROID_BRINGUP_DEBUG is defined but is registered unconditionally so a
+#     debug build is one macro away.  No release build defines it.
+
+set_global_assignment -name SEARCH_PATH rtl/main
+
+set_global_assignment -name QIP_FILE sys/sys.qip
+
+# ---- clocking ----
+# 57.272724 MHz = 4 x the 14.318181 MHz master crystal, PLL 50 x 63 / 5 / 11.
+# Taken verbatim from the Xybots core: the crystal is identical, so the counters
+# are too, and so is the phase-shifted SDRAM tap on outclk_1.
+set_global_assignment -name QIP_FILE rtl/pll.qip
+
+# ---- vendored libraries (see rtl/lib/README.md and NOTICE.md) ----
+# blstroid_main instantiates fx68k, blstroid_jsa instantiates T65_wrap and
+# blstroid_ym instantiates jt51.
+#
+# fx68k, the 68000 main CPU.  The SEARCH_PATH line is load-bearing - see the
+# microcode warning at the top of this file.
+set_global_assignment -name SEARCH_PATH rtl/lib/fx68k
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/lib/fx68k/fx68k.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/lib/fx68k/fx68kAlu.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/lib/fx68k/uaddrPla.sv
+#
+# JSA I sound board (6502 + YM2151).  Blasteroids' JSA has no POKEY and no
+# TMS5220 populated, so no POKEY core is vendored at all.
+set_global_assignment -name VHDL_FILE rtl/lib/T65/T65_Pack.vhd
+set_global_assignment -name VHDL_FILE rtl/lib/T65/T65_MCode.vhd
+set_global_assignment -name VHDL_FILE rtl/lib/T65/T65_ALU.vhd
+set_global_assignment -name VHDL_FILE rtl/lib/T65/T65.vhd
+set_global_assignment -name VHDL_FILE rtl/lib/T65/T65_wrap.vhd
+set_global_assignment -name QIP_FILE rtl/lib/jt51/hdl/jt51.qip
+
+# ---- the main board - SP-316 sheets 2, 3, 4, 5 and 12 ----
+# blstroid_main is the one module rtl/blstroid_core.sv instantiates from this
+# group; it composes all of the others plus the 16 KB video/work RAM (5L, 6/7L),
+# the 512 x 16 colour RAM and the 256 x 1 priority RAM.  Those three arrays are
+# the only copies in the design: rtl/video/blstroid_video.sv is instantiated
+# with INTERNAL_VRAM/CRAM/PRIO = 0 and reads them through the video-side ports.
+#
+# blstroid_leta is the Atari LETA custom at 8A, the Whirly-Gig counter.
+# blstroid_whirly is the cabinet side of the LET connector and is instantiated
+# per player in Arcade-Blasteroids.sv, not here.
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/main/blstroid_dpram_be.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/main/blstroid_addr_decode.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/main/blstroid_cpu.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/main/blstroid_dtack.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/main/blstroid_irq.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/main/blstroid_watchdog.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/main/blstroid_eeprom_2804.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/main/blstroid_nvram_io.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/main/blstroid_inputs.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/main/blstroid_leta.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/main/blstroid_whirly.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/main/blstroid_main.sv
+
+# ---- memory path ----
+# The ioctl download router and the two large BRAMs it fills: a 256 KB program
+# ROM (256 M10K) and a 64 KB sound ROM (64 M10K).
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/mem/blstroid_rom_loader.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/mem/blstroid_prog_rom.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/mem/blstroid_ram8.sv
+#
+# ---- the graphics SDRAM path ----
+# blstroid_sdram_loader packs the download byte stream into 16-bit words and
+# performs the sprite M/N half interleave; blstroid_gfx_mem is the playfield +
+# motion-object read arbiter plus the single loader write port (a write client
+# placed behind the read arbiter gets pruned - grep output_files/*.map.rpt for
+# "Lost fanout" after any arbiter change); blstroid_sdram is the
+# MT48LC16M16-class controller.  All three take `init_reset` (= ~pll_locked)
+# and nothing else.
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/mem/blstroid_sdram_loader.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/mem/blstroid_gfx_mem.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/mem/blstroid_sdram.sv
+
+# ---- JSA I audio PCB (SP-316 sheets 14-17) ----
+# The whole board.  blstroid_jsa is the one module blstroid_core instantiates
+# (T65 + bus + jt51 + mixer + low-pass); the T65 and jt51 library lines above
+# belong to it.
+#
+# The 64 KB sound ROM is not here: it is the shared BRAM in rtl/mem, filled by
+# blstroid_rom_loader from download-stream offset 0x040000, and blstroid_jsa
+# reads it through snd_rom_addr / snd_rom_data.  The 8 KB work RAM (2H) IS
+# inside, in blstroid_jsa_mem.
+#
+# blstroid_jsa_pal2l.sv is the literal fuse map of Atari 136056-2101 (the 2L
+# PAL16L8A): eight sums of products, no abstraction.  blstroid_jsa_decode
+# instantiates it and adds only the 4M LS138 and the POKEY chip select.  Do not
+# "simplify" it.
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/sound/blstroid_jsa_pal2l.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/sound/blstroid_jsa_decode.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/sound/blstroid_jsa_mem.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/sound/blstroid_jsa_io.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/sound/blstroid_sound_comm.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/sound/blstroid_jsa_bus.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/sound/blstroid_ym.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/sound/blstroid_jsa_mix.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/sound/blstroid_jsa_lpf.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/sound/blstroid_jsa.sv
+
+# ---- video ----
+# A bring-up raster and test pattern.  It is not in the picture path:
+# rtl/blstroid_core.sv only instantiates it under `ifdef BLSTROID_BRINGUP_DEBUG,
+# which no release build defines.  It is registered here anyway so that a debug
+# build is one macro away when a board comes up black.
+# The pixel clock is ce_14m = clk_sys/4 = 14.318181 MHz, so every video module
+# below runs at ce_14m, not ce_7m.
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/video/blstroid_testpat.sv
+
+# The sheet-derived video timing and playfield: the sync generator (sheet 4,
+# the SOS-2 at 3F), the 16 KB video/work RAM with its eight-count slot arbiter
+# (sheet 5) and the playfield pipeline (sheet 6).  All three are instantiated by
+# blstroid_video.sv below.
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/video/blstroid_sos2_sync.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/video/blstroid_vram.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/video/blstroid_pf.sv
+
+# The motion-object engine (sheets 7, 8, 9: VMATCH 8K, SOS-1 10K and the two
+# line buffers) and the compositor (sheet 10's priority RAM 17E, the PF/MO
+# decision register, the CRA8 multiplexer and the 512 x 16 colour RAM; sheet
+# 11's three R/2R DACs).  blstroid_video.sv is the one module the core
+# instantiates: it contains sos2_sync, vram, pf, mo, prio, cram and dac, and its
+# header states the three things an integrator must get right (where the RAMs
+# live, the two-pixel compositor latency, and MO_H_OFFSET).  blstroid_mo
+# instantiates blstroid_mo_linebuf; nothing else nests.
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/video/blstroid_mo_linebuf.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/video/blstroid_mo.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/video/blstroid_prio.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/video/blstroid_cram.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/video/blstroid_dac.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/video/blstroid_video.sv
+
+# CRT Adjust (H-Size / H-Position / V-Shift) on the analog output, outside the
+# core.  crt_adjust.sv is rmonic79's MiSTer-CRT-Adjust engine (GPL-3.0, see
+# NOTICE.md), vendored with two adaptations its own header spells out: AW = 11,
+# because this line is 912 pixels and upstream's 512-per-bank buffer would wrap
+# mid-line, and no `initial` loop over 2048 entries.
+# blstroid_analog_adjust.sv is the OSD decode, the read-rate generator (the
+# accumulator step is 64/CLK_PER_PIX, not upstream's fixed quarter clock) and
+# the DE glue, parameterised for the 912 x 262 raster.
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/video/crt_adjust.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/video/blstroid_analog_adjust.sv
+
+# ---- core + emu glue ----
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/blstroid_core.sv
+set_global_assignment -name SDC_FILE Blasteroids.sdc
+set_global_assignment -name SYSTEMVERILOG_FILE Arcade-Blasteroids.sv
