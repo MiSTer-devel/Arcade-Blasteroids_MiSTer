@@ -3,7 +3,7 @@
 //  (rtl/crt_adjust.sv, upstream commit c682de9), GPL-3.0-or-later,
 //  (c) Umberto Parisi.
 //
-//  The upstream text below is unchanged apart from these three adaptations.
+//  The upstream text below is unchanged apart from these four adaptations.
 //  Do not undo them:
 //
 //   1. AW is a parameter here, default 11 (2048 samples, 1024 per bank).
@@ -25,6 +25,17 @@
 //      upstream's own default.  The fix below sign-extends explicitly and keeps
 //      both arms signed; nothing else changes, and a future re-vendor from
 //      upstream must re-apply it or check that upstream has.
+//   4. VB_LATE parameter (default 1 = upstream).  Upstream delays vb_in by a
+//      second line because it assumes HSync PRECEDES the active pixels, so the
+//      bank completed at an HSync rise holds the PREVIOUS line.  On the
+//      Blasteroids raster HSync FOLLOWS them (active px 32..671, HSync px
+//      754..817 of 912, and the line counter advances at h = 0): the bank
+//      completed at the HSync rise of line L holds line L itself, and vb_in
+//      sampled on that rise is already line L's blank.  With the upstream delay
+//      the first visible line was blanked and the first vblank line (stale
+//      buffer content) was shown below the picture.  blstroid_analog_adjust
+//      builds VB_LATE = 0.  The same adaptation, with the same number, is in
+//      this project family's other cores, so the file stays one diffable copy.
 //
 //  Everything else is upstream, including the `hsize` input, which this module
 //  does not read: H-Size is entirely a property of the pxl2_cen read rate the
@@ -139,8 +150,10 @@ module crt_adjust #(
     parameter VTOTAL   = 263,
     parameter HTOTAL   = 384,               // line length in pixels (for the HSync shreg)
     parameter HPOS_MODE = `HPOS_CONTENTSHIFT, // see HPOS_MODE block above
-    parameter AW       = 11                 // 2048 samples, 1024 per bank (see the
+    parameter AW       = 11,                // 2048 samples, 1024 per bank (see the
                                             // vendoring note at the top of this file)
+    parameter VB_LATE  = 1                  // ADAPTATION 4: 1 = upstream, 0 = HSync
+                                            // after the active line (see the note)
 )
 (
     input              clk,
@@ -351,7 +364,8 @@ module crt_adjust #(
     initial begin vb_line = 0; vb_active = 0; end
     always @(posedge clk) if (hs_rise_in) begin
         vb_line   <= vb_in;
-        vb_active <= vb_line;
+        // ---- ADAPTATION 4, see the vendoring note at the top of this file.
+        vb_active <= VB_LATE ? vb_line : vb_in;
     end
 
     // hoffset (signed) sposta la finestra attiva: >0 = contenuto a DESTRA, <0 a

@@ -149,7 +149,8 @@ module blstroid_analog_adjust #(
 		.VTOTAL    (V_TOTAL),
 		.HTOTAL    (H_TOTAL),
 		.HPOS_MODE (HPOS_MODE),
-		.AW        (AW)
+		.AW        (AW),
+		.VB_LATE   (0)              // HSync follows the active line: see below
 	) u_crt_adjust (
 		.clk        (clk),
 		.pxl_cen    (ce_pix),
@@ -170,22 +171,29 @@ module blstroid_analog_adjust #(
 	);
 
 	// ---------------- the vertical blank handed to arcade_video ------------
-	// The read side emits the PREVIOUS line, so crt_adjust gates `pass_q` with a
-	// vblank that is one line late (`vb_active` inside it).  `str_vb` is not
-	// that signal -- it is the native, write-rate blank -- so handing `str_vb`
-	// to arcade_video would blank the last visible line while the read side is
-	// still emitting it.  `vb_read` below is a bit-exact replica of the module's
-	// own two-flop chain, sampled on the same `hs_ref` edge, so DE goes low over
-	// exactly the lines `pass_q` is already suppressing and no line is lost.
+	// The read side emits the line the write side has just closed, one HSync
+	// behind the write side, so crt_adjust gates `pass_q` with a vblank sampled
+	// on that HSync rise (`vb_active` inside it).  `str_vb` is not that signal
+	// -- it is the native, write-rate blank, which changes at h = 0 while the
+	// read side is still emitting the line before -- so it cannot be DE here.
+	//
+	// Which line a closed bank holds depends on where HSync sits.  Upstream
+	// assumes HSync PRECEDES the active pixels, so the bank closed at an HSync
+	// rise holds the previous line and its vblank needs a second line of delay
+	// (VB_LATE = 1).  Here HSync FOLLOWS them (active px 32..671, HSync px
+	// 754..817), and vblank changes at h = 0, before both: the bank closed at
+	// the HSync rise of line L holds line L, and vb_in sampled on that rise is
+	// line L's own blank.  The second line of delay would blank line 0 and show
+	// line 240 -- stale vblank content -- below the picture, so the engine is
+	// built with VB_LATE = 0 and `vb_read` is one flop on the same `hs_ref`
+	// edge, a bit-exact replica of `vb_active`.  DE then goes low over exactly
+	// the lines `pass_q` suppresses, and the frame is source lines 0..239.
 	logic hs_ref_q;
 	always_ff @(posedge clk) if (ce_pix) hs_ref_q <= hs_ref;
 	wire  ref_line_tick = ce_pix & hs_ref & ~hs_ref_q;
 
-	logic vb_line, vb_read;
-	always_ff @(posedge clk) if (ref_line_tick) begin
-		vb_line <= vb_in;
-		vb_read <= vb_line;
-	end
+	logic vb_read;
+	always_ff @(posedge clk) if (ref_line_tick) vb_read <= vb_in;
 
 	// ---------------- what is NOT here: upstream's `de_osd` ----------------
 	// Upstream's core-side snippet hands the framework a DE window whose rising
