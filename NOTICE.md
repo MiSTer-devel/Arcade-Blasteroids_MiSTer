@@ -37,7 +37,7 @@ filter value) is re-derived from the SP-316 schematics.
 
 | Group | Ancestor |
 |---|---|
-| `Blasteroids.qsf`, `.qpf`, `.srf`, `.sdc`, `files.qip`, `clean.bat`, `.gitignore`, `Arcade-Blasteroids.sv`, `rtl/blstroid_core.sv` | the Xybots core's project files, framework glue and core top |
+| `Arcade-Blasteroids.qsf`, `.qpf`, `.srf`, `Blasteroids.sdc`, `files.qip`, `clean.bat`, `.gitignore`, `Arcade-Blasteroids.sv`, `rtl/blstroid_core.sv` | the Xybots core's project files, framework glue and core top |
 | `rtl/main/blstroid_{addr_decode,cpu,dtack,irq,main,watchdog,eeprom_2804,nvram_io,dpram_be}.sv`, `rtl/mem/blstroid_ram8.sv` | the Xybots core's `rtl/main/xybots_*.sv` (EEPROM and NVRAM transport originally from Toobin') |
 | `rtl/mem/blstroid_{sdram,gfx_mem,sdram_loader,rom_loader,prog_rom}.sv` | the Xybots core's `rtl/mem/xybots_*.sv`, from Toobin' |
 | `rtl/sound/blstroid_*.sv` | the Xybots core's `rtl/sound/xybots_*.sv`, from Toobin' (the same JSA I board) |

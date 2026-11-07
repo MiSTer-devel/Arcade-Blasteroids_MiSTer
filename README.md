@@ -51,7 +51,7 @@ the 64 KB sound ROM live in FPGA block RAM.
 
 ## Installing
 
-1. Copy `releases/Blasteroids_YYYYMMDD.rbf` to `/media/fat/_Arcade/cores/`.
+1. Copy `releases/Arcade-Blasteroids_YYYYMMDD.rbf` to `/media/fat/_Arcade/cores/`.
 2. Copy `releases/Blasteroids.mra` to `/media/fat/_Arcade/`, and any wanted
    alternates from `releases/_alternatives/_Blasteroids/` to
    `/media/fat/_Arcade/_alternatives/_Blasteroids/`.
@@ -269,16 +269,18 @@ Quartus Prime **17.0.2** (Lite or Standard) — the version MiSTer standardises
 on; a newer Quartus rewrites `sys/`.
 
 ```
-quartus_sh --flow compile Blasteroids
+quartus_sh --flow compile Arcade-Blasteroids
 ```
 
-The revision is named `Blasteroids`, so the bitstream lands in
-`output_files/Blasteroids.rbf` with no rename step, and the MRA's
-`<rbf>Blasteroids</rbf>` resolves against it. `clean.bat` removes the build
+The revision is named `Arcade-Blasteroids`, the MiSTer arcade naming rule, so
+the bitstream lands in `output_files/Arcade-Blasteroids.rbf`; a release is that
+file renamed `Arcade-Blasteroids_YYYYMMDD.rbf`. The MRA's
+`<rbf>Blasteroids</rbf>` finds it either way, because MiSTer retries the name
+with the `Arcade-` prefix. `clean.bat` removes the build
 products.
 
 Source files are listed in `files.qip`; add and remove entries there by hand
-rather than through the Quartus GUI, which rewrites `Blasteroids.qsf`. Never
+rather than through the Quartus GUI, which rewrites `Arcade-Blasteroids.qsf`. Never
 edit `sys/` — it is the untouched MiSTer framework.
 
 ---
