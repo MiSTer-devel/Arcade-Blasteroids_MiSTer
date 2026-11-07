@@ -90,7 +90,9 @@ rate so a plain gamepad or keyboard can play; Up and Down are ignored.
 ### The Whirly-Gig knob
 
 The knob is an optical encoder read by an Atari LETA custom, so the core
-takes it from an analog source. All of these are summed and any of them works
+takes it from an analog source. The LETA model follows JROK's bench
+measurement of a real chip: quadrature counting at 4x (the board straps it
+that way) with a 3-sample filter on each input. All of these are summed and any of them works
 with no selector:
 
 | Source | How it is read |
@@ -253,9 +255,11 @@ willing to help, open an issue.
    (the 8-bit per-frame difference must not wrap), not from a measured knob.
 3. **Which YM2151 channel is left.** SP-316 does not label them, so the core
    follows MAME.
-4. **LETA count direction.** There is no LETA datasheet. The shipped default
-   plays correctly for everyone who has reported; the *Whirly direction*
-   option exists in case a setup disagrees.
+4. **Whirly-Gig direction on a real cabinet.** The LETA's own counting rule
+   is known from JROK's bench measurement, but which way a real knob turns the
+   ship depends on the cabinet's encoder wiring, which is not documented. The
+   shipped default plays correctly for everyone who has reported; the *Whirly
+   direction* option exists in case a setup disagrees.
 
 ---
 

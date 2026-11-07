@@ -46,10 +46,11 @@ filter value) is re-derived from the SP-316 schematics.
 
 `rtl/main/blstroid_leta.sv`, `blstroid_whirly.sv` and `blstroid_inputs.sv` are
 written for this core: Blasteroids' Whirly-Gig is an optical encoder read by an
-Atari LETA custom, which no prior core of the author's has. `blstroid_leta.sv`'s
-header names the Arcade-Atari-System2 core's `sys2_leta.sv` (GPL-2.0-or-later,
-RetroShrimp) as the tested model it was checked against; no code was copied
-from it.
+Atari LETA custom, which no prior core of the author's has. `blstroid_leta.sv`
+implements the behaviour of JROK's freeware `LETA_REP.vhd` ("LETA on a CPLD",
+jrok.com/project/leta), a replacement built by bench-testing a real LETA; no
+code was copied from it. The same model ships in the Arcade-AtariSystem2
+core's `sys2_leta.sv` (commit `f35c810b`, RetroShrimp).
 
 ## Reference material (read for behaviour, never compiled or redistributed)
 

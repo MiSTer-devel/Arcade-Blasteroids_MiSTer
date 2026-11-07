@@ -15,17 +15,17 @@
 //  Whirly-Gig knob; here they are synthesised from whatever the player has
 //  plugged into the MiSTer.
 //
-//  The pin pattern is the 4-state Gray code the LETA's 2x decoder expects (see
-//  blstroid_leta.sv): A = phase[1], B = phase[0] ^ phase[1], two phase steps
-//  per counter count, so
+//  The pin pattern is the 4-state Gray code the LETA counts at RESOL = 1,
+//  the way sheet 4 straps it (see blstroid_leta.sv), ONE phase step per count:
 //
-//      counting up    (0,0) -> (0,1) -> (1,1) -> (1,0) -> (0,0)
-//      counting down  the same sequence backwards
+//      (CLK, DIR)  counting up    00 -> 10 -> 11 -> 01 -> 00   (CLK leads)
+//                  counting down  the same sequence backwards
 //
-//  Every A transition is a count and "A == B at the sample" is the direction,
-//  which is also how a plain clock+direction chip would read it.  Only the
-//  sign of the result could therefore differ, and `INVERT` plus the OSD
-//  "Whirly direction" switch cover that.
+//  At 4x every transition of either line is one count, so a backlog of N
+//  counts leaves as exactly N phase steps.  Only one line changes per step,
+//  so the chip never sees the "both changed" case it ignores.  Which way
+//  this turns the ship is fixed by the cabinet's wiring, not by anything on
+//  the board; `INVERT` and the OSD "Whirly direction" switch cover it.
 //
 //  ---- pacing: even spacing and a speed limit -----------------------------
 //  A MiSTer spinner does not turn like an optical knob.  It reports in bursts,
@@ -37,23 +37,28 @@
 //  backwards.  So the backlog is drained by a rate-proportional accumulator:
 //
 //      acc += min(|backlog|, RATE_CAP)   every clk_sys
-//      one phase step each time acc reaches SMOOTH_K
+//      one phase step (= one count) each time acc reaches SMOOTH_K
 //
-//      counts/s = min(|backlog|, RATE_CAP) * f_clk / (2 * SMOOTH_K)
+//      counts/s = min(|backlog|, RATE_CAP) * f_clk / SMOOTH_K
 //
 //    * Even spacing: below the cap the rate is proportional to the backlog, so
-//      a burst decays with tau = 2*SMOOTH_K / f_clk = 8.0 ms and leaves as
+//      a burst decays with tau = SMOOTH_K / f_clk = 8.0 ms and leaves as
 //      evenly spaced edges over about half a frame instead of one clump.
 //    * Speed limit: at |backlog| >= RATE_CAP the rate pins at 6000 counts/s =
 //      100.1 counts per 59.92 Hz frame, so at most 101 land in one frame
 //      sample — 27 short of the wrap at 128, at any sensitivity and any spin.
 //      The margin covers the frame sample falling between two edges and the
 //      d-pad being summed in on top.
-//    * The fastest phase-step interval is SMOOTH_K / RATE_CAP = 4773 clk_sys,
-//      37 times the LETA's 8H sampling period, so no edge is ever missed.
-//    * The accumulator parks one short of SMOOTH_K while the backlog is empty,
-//      so the first edge of a movement leaves on the next clock and the
-//      smoothing adds no dead time to the start of a turn.
+//    * The fastest phase-step interval is SMOOTH_K / RATE_CAP = 9545 clk_sys
+//      (167 us), so every pin state is held for at least 74 of the LETA's 8H
+//      samples (128 clk_sys each); its filter needs 3.
+//    * While the backlog is empty the accumulator refills at the cap rate and
+//      parks one short of SMOOTH_K, so after a rest the first edge of a
+//      movement leaves on the next clock and the smoothing adds no dead time
+//      to the start of a turn.  The refill is never faster than the cap, so
+//      the fastest step interval holds even when a new movement arrives right
+//      after a step (for example a spinner and a mouse update a few clocks
+//      apart): no pin state is ever shorter than SMOOTH_K / RATE_CAP.
 //
 //  The backlog is clamped to +/-127 counts, so a wild flick cannot keep the
 //  knob turning for seconds afterwards.  RATE_CAP is the largest rate the
@@ -91,10 +96,10 @@
 //============================================================================
 
 module blstroid_whirly #(
-	// Pacing (see "pacing" above).  tau = 2*SMOOTH_K/f_clk; top speed =
-	// RATE_CAP*f_clk/(2*SMOOTH_K) counts/s.  Keep SMOOTH_K/RATE_CAP well above
-	// the LETA's 128-clk_sys sampling period.
-	parameter int unsigned SMOOTH_K  = 229091,
+	// Pacing (see "pacing" above).  tau = SMOOTH_K/f_clk; top speed =
+	// RATE_CAP*f_clk/SMOOTH_K counts/s.  Keep SMOOTH_K/RATE_CAP well above
+	// the 384 clk_sys (3 x 8H) the LETA's input filter needs per pin state.
+	parameter int unsigned SMOOTH_K  = 458182,
 	parameter int unsigned RATE_CAP  = 48,
 	// clk_sys cycles between d-pad steps, and counts per step.
 	parameter int unsigned DPAD_DIV  = 65536,
@@ -222,9 +227,7 @@ module blstroid_whirly #(
 	end
 
 	logic signed [10:0]        err;     // backlog, clamped to +/-127 counts
-	logic                      sub;     // half-step within a count
-	logic                      pos0;    // LSB of the emitted count position
-	logic                      dir_up;  // held while stopped, so the pins rest
+	logic      [1:0]           pos;     // quadrature position, one step = one count
 
 	wire moving = (err != 11'sd0);
 
@@ -237,23 +240,27 @@ module blstroid_whirly #(
 	wire       [ACCW-1:0]  inc   = (ACCW'(mag) > CAP) ? CAP : ACCW'(mag);
 	wire       [ACCW:0]    acc_sum = {1'b0, acc} + {1'b0, inc};
 	wire step_tick = moving && (acc_sum >= {1'b0, K});
+	// While idle the accumulator refills at the cap rate, never faster, and
+	// stops one short of K.
+	wire       [ACCW:0]    acc_fill = {1'b0, acc} + {1'b0, CAP};
+	localparam [ACCW:0]    PARK     = {1'b0, K - 1'b1};
 
-	// One count is retired only on the SECOND half-step of a pair.
-	wire retire    = step_tick & sub;
-	wire signed [10:0] err_step = retire ? ((err > 0) ? -11'sd1 : 11'sd1) : 11'sd0;
+	// Every phase step retires one count of the backlog.
+	wire signed [10:0] err_step = step_tick ? ((err > 0) ? -11'sd1 : 11'sd1) : 11'sd0;
 	wire signed [11:0] err_next = 12'(err) + 12'(delta) + 12'(err_step);
 
 	always_ff @(posedge clk) begin
 		if (reset) begin
-			acc    <= K - 1'b1;
-			err    <= '0;
-			sub    <= 1'b0;
-			pos0   <= 1'b0;
-			dir_up <= 1'b1;
+			acc <= K - 1'b1;
+			err <= '0;
+			pos <= 2'd0;
 		end else begin
-			// Parked one short of K while idle: the first edge of a movement
-			// leaves on the next clock.
-			if      (!moving)   acc <= K - 1'b1;
+			// Idle: refill toward one short of K at no more than CAP per clock.
+			// After a long rest the first edge of a movement leaves on the next
+			// clock, yet a movement that starts just after a step still waits
+			// the full SMOOTH_K / RATE_CAP, so no pin state is ever shorter
+			// than that, whichever sources the backlog came from.
+			if      (!moving)   acc <= (acc_fill >= PARK) ? ACCW'(PARK) : ACCW'(acc_fill);
 			else if (step_tick) acc <= ACCW'(acc_sum - {1'b0, K});
 			else                acc <= ACCW'(acc_sum);
 
@@ -261,20 +268,14 @@ module blstroid_whirly #(
 			else if (err_next < -12'sd127) err <= -11'sd127;
 			else                           err <= 11'(err_next);
 
-			if (step_tick) begin
-				dir_up <= (err > 0);
-				sub    <= ~sub;
-				if (sub) pos0 <= ~pos0;            // a whole count emitted
-			end
+			if (step_tick) pos <= (err > 0) ? pos + 2'd1 : pos - 2'd1;
 		end
 	end
 
-	// phase = {pos0, sub};  A = phase[1], B = phase[0] ^ phase[1].
-	// Counting down runs the same sequence backwards, which the decoder reads
-	// as "A and B disagree at the sampling edge".
-	wire [1:0] phase = dir_up ? {pos0, sub} : {pos0, ~sub};
-	assign enc_a = phase[1];
-	assign enc_b = phase[0] ^ phase[1];
+	// pos 0 1 2 3 -> (CLK, DIR) 00 10 11 01: the LETA's up sequence.  pos 0 is
+	// 00, the level the board's pull-downs give an idle input.
+	assign enc_a = pos[1] ^ pos[0];
+	assign enc_b = pos[1];
 
 	/* verilator lint_off UNUSEDSIGNAL */
 	wire _unused = &{1'b0, sp_d[8], pd_d[8], ms_d[8], pad_d[8], 1'b0};

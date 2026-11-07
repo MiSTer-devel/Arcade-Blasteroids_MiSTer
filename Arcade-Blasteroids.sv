@@ -128,9 +128,9 @@ localparam CONF_STR = {
 	//     and applies delta*|delta|, with an acceleration flag at |delta| >= 4
 	//     counts per frame, so 3 versus 4 counts per frame is a qualitative
 	//     change in feel.  Entry 0 is the 1x default and the steps are eighths.
-	//   * DIRECTION.  The LETA's CLK/DIR sense is not documented, and
-	//     blstroid_whirly and blstroid_leta are self-consistent under either
-	//     reading, so this switch selects between them.
+	//   * DIRECTION.  The LETA counts up when CLK leads DIR; which way a real
+	//     knob turns for that depends on how the cabinet's encoder is wired,
+	//     which the board does not fix, so this switch reverses the knob.
 	"O[15:12],Whirly sensitivity,1x,1.125x,1.25x,1.375x,1.5x,1.75x,2x,2.5x,3x,4x,0.25x,0.375x,0.5x,0.625x,0.75x,0.875x;",
 	"O[11],Whirly direction,Normal,Inverted;",
 	"-;",
